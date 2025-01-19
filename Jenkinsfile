@@ -23,7 +23,7 @@ pipeline {
                     bat "python -m venv venv"
                     bat "venv\\Scripts\\activate && python -m pip install --upgrade pip || exit 1"
                     bat "venv\\Scripts\\activate && pip install -r requirements.txt || exit 1"
-                    bat "setx GOOGLE_API_KEY $(GOOGLE_API_KEY)"
+                    bat "setx GOOGLE_API_KEY ${GOOGLE_API_KEY}"
                 }
             }
         }
