@@ -6,7 +6,7 @@ pipeline {
         APP_NAME = 'streamlit-text-converter'
         STREAMLIT_PORT = '8501'
         STREAMLIT_PID_FILE = 'streamlit.pid'
-        WORKSPACE = "${JENKINS_HOME}/workspace/${env.JOB_NAME}"
+        WORKSPACE = "${JENKINS_HOME}\\workspace\\${env.JOB_NAME}"
     }
 
     stages {
@@ -19,9 +19,9 @@ pipeline {
         stage('Setup Python Environment') {
             steps {
                 script {
-                    sh "python${PYTHON_VERSION} -m venv venv"
-                    sh "source venv/bin/activate && pip install --upgrade pip"
-                    sh "source venv/bin/activate && pip install -r requirements.txt"
+                    bat "python -m venv venv"
+                    bat "venv\\Scripts\\activate && pip install --upgrade pip"
+                    bat "venv\\Scripts\\activate && pip install -r requirements.txt"
                 }
             }
         }
@@ -30,18 +30,18 @@ pipeline {
             steps {
                 script {
                     // Clean up any existing Streamlit process
-                    sh '''
-                    if [ -f ${STREAMLIT_PID_FILE} ]; then
-                        kill $(cat ${STREAMLIT_PID_FILE}) || true
-                        rm -f ${STREAMLIT_PID_FILE}
-                    fi
+                    bat '''
+                    if exist ${STREAMLIT_PID_FILE} (
+                        for /f %%i in (${STREAMLIT_PID_FILE}) do taskkill /PID %%i /F
+                        del ${STREAMLIT_PID_FILE}
+                    )
                     '''
 
                     // Start the Streamlit app
-                    sh '''
-                    source venv/bin/activate && \
+                    bat '''
+                    venv\\Scripts\\activate && \
                     streamlit run app.py --server.port=${STREAMLIT_PORT} > streamlit.log 2>&1 &
-                    echo $! > ${STREAMLIT_PID_FILE}
+                    echo %ERRORLEVEL% > ${STREAMLIT_PID_FILE}
                     '''
                 }
             }
@@ -52,7 +52,7 @@ pipeline {
                 script {
                     // Add your application tests here
                     echo 'Running tests...'
-                    sh "curl -f http://localhost:${STREAMLIT_PORT} || exit 1"
+                    bat "curl -f http://localhost:${STREAMLIT_PORT} || exit 1"
                 }
             }
         }
@@ -62,11 +62,11 @@ pipeline {
         always {
             script {
                 // Stop the Streamlit process after the build
-                sh '''
-                if [ -f ${STREAMLIT_PID_FILE} ]; then
-                    kill $(cat ${STREAMLIT_PID_FILE}) || true
-                    rm -f ${STREAMLIT_PID_FILE}
-                fi
+                bat '''
+                if exist ${STREAMLIT_PID_FILE} (
+                    for /f %%i in (${STREAMLIT_PID_FILE}) do taskkill /PID %%i /F
+                    del ${STREAMLIT_PID_FILE}
+                )
                 '''
             }
 
