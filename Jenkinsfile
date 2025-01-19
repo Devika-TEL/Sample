@@ -6,7 +6,7 @@ pipeline {
         APP_NAME = 'streamlit-text-converter'
         STREAMLIT_PORT = '8501'
         STREAMLIT_PID_FILE = 'streamlit.pid'
-        WORKSPACE = "${JENKINS_HOME}\workspace\${env.JOB_NAME}"
+        WORKSPACE = "${JENKINS_HOME}/workspace/${env.JOB_NAME}"
     }
 
     stages {
