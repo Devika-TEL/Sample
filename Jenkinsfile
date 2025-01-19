@@ -68,11 +68,11 @@ pipeline {
                 }
             }
         }
-        
+               
         stage('Deploy') {
             steps {
                 script {
-                    // Enhanced launcher script
+                    // Modified launcher script to run as a detached process
                     writeFile file: 'launch_streamlit.bat', text: '''
                         @echo off
                         setlocal EnableDelayedExpansion
@@ -87,10 +87,17 @@ pipeline {
                             exit /b 1
                         )
                         
-                        echo %time% > streamlit.pid
+                        REM Create a VBS script to run Streamlit in the background
+                        echo Set WshShell = CreateObject("WScript.Shell") > run_streamlit.vbs
+                        echo WshShell.CurrentDirectory = "%CD%" >> run_streamlit.vbs
+                        echo cmd = "cmd /c venv\\Scripts\\streamlit.exe run app.py --server.port 8501 > streamlit.log 2>&1" >> run_streamlit.vbs
+                        echo WshShell.Run cmd, 0, false >> run_streamlit.vbs
                         
-                        REM Launch Streamlit with full path and wait for port availability
-                        start /B cmd /c "venv\\Scripts\\streamlit.exe run app.py --server.port 8501 > streamlit.log 2>&1"
+                        REM Launch the VBS script
+                        cscript //Nologo run_streamlit.vbs
+                        
+                        REM Store the timestamp as PID (since we can't get the actual PID of the detached process)
+                        echo %date% %time% > streamlit.pid
                         
                         REM Wait for Streamlit to start (up to 30 seconds)
                         set /a attempts=0
@@ -109,12 +116,14 @@ pipeline {
                         exit /b 1
                     '''
                     
-                    // Enhanced cleanup script
+                    // Modified cleanup script to handle background process
                     writeFile file: 'cleanup_streamlit.bat', text: '''
                         @echo off
                         echo Cleaning up Streamlit processes...
+                        taskkill /F /IM "streamlit.exe" /FI "WINDOWTITLE eq streamlit*" 2>nul || echo No Streamlit processes found
                         taskkill /F /IM "streamlit.exe" 2>nul || echo No Streamlit processes found
                         if exist streamlit.pid del /f streamlit.pid
+                        if exist run_streamlit.vbs del /f run_streamlit.vbs
                         if exist streamlit.log move /y streamlit.log streamlit_old.log
                         exit /b 0
                     '''
@@ -142,7 +151,7 @@ pipeline {
         success {
             script {
                 echo "Pipeline completed successfully. Streamlit is running on http://localhost:8501"
-                archiveArtifacts artifacts: 'streamlit.log,streamlit.pid', allowEmptyArchive: true
+                archiveArtifacts artifacts: 'streamlit.log,streamlit.pid,run_streamlit.vbs', allowEmptyArchive: true
             }
         }
         failure {
@@ -154,7 +163,6 @@ pipeline {
         }
         always {
             script {
-                // Archive test results and logs
                 junit allowEmptyResults: true, testResults: 'test-results.xml'
                 bat 'if exist streamlit.log copy streamlit.log streamlit_%BUILD_NUMBER%.log'
             }
