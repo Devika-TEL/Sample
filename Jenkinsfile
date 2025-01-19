@@ -7,7 +7,7 @@ pipeline {
         STREAMLIT_PORT = '8501'
         STREAMLIT_PID_FILE = 'streamlit.pid'
         WORKSPACE = "${JENKINS_HOME}/workspace/${env.JOB_NAME}"
-        GOOGLE_API_KEY = credentials(google_api_key)
+        GOOGLE_API_KEY = credentials('google_api_key')
     }
 
     stages {
