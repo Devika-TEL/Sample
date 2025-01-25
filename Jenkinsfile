@@ -43,7 +43,7 @@ pipeline {
                     // Run Streamlit in the background and save the PID
                     sh """
                         . ${VENV_PATH}/bin/activate
-                        nohup streamlit run your_app.py --server.port=${STREAMLIT_PORT} > streamlit.log 2>&1 &
+                        nohup streamlit run app.py --server.port=${STREAMLIT_PORT} > streamlit.log 2>&1 &
                         echo \$! > streamlit.pid
                     """
                 }
