@@ -2,146 +2,68 @@ pipeline {
     agent any
     
     environment {
-        PYTHON_VERSION = '3.9'
-        APP_NAME = 'streamlit-text-converter'
-        STREAMLIT_PORT = '8501'
-        STREAMLIT_PID_FILE = 'streamlit.pid'
-        WORKSPACE = "${JENKINS_HOME}/workspace/${env.JOB_NAME}"
+        // Set Python virtual environment path
+        VENV_PATH = "${WORKSPACE}/venv"
+        // Streamlit port
+        STREAMLIT_PORT = '8051'
     }
     
     stages {
         stage('Checkout') {
             steps {
+                // Checkout your source code
                 checkout scm
             }
         }
         
-        stage('Setup Python Environment') {
+        stage('Setup Environment') {
             steps {
                 script {
-                    // Kill any existing Python/Streamlit processes
-                    bat '''
-                        taskkill /F /IM "streamlit.exe" 2>nul || exit /b 0
-                        taskkill /F /IM "python.exe" 2>nul || exit /b 0
-                        timeout /t 5 /nobreak > nul
-                    '''
-                    
-                    // Clean up environment with proper error handling
-                    bat '''
-                        if exist venv (
-                            rmdir /s /q venv 2>nul || (
-                                echo Retrying with elevated permissions...
-                                powershell -Command "Remove-Item -Path venv -Recurse -Force"
-                            )
-                        )
-                        
-                        echo Creating new virtual environment...
-                        python -m venv venv || (
-                            echo Failed to create virtual environment
-                            exit /b 1
-                        )
-                        
-                        call venv\\Scripts\\activate.bat || (
-                            echo Failed to activate virtual environment
-                            exit /b 1
-                        )
-                        
-                        echo Installing dependencies...
-                        venv\\Scripts\\python.exe -m pip install --upgrade pip
-                        venv\\Scripts\\pip.exe install -r requirements.txt || (
-                            echo Failed to install requirements
-                            exit /b 1
-                        )
-                        venv\\Scripts\\pip.exe install pytest pytest-cov
+                    // Create virtual environment
+                    sh '''
+                        python3 -m venv ${VENV_PATH}
+                        . ${VENV_PATH}/bin/activate
+                        pip install --upgrade pip
+                        pip install -r requirements.txt
                     '''
                 }
             }
         }
         
-        stage('Run Tests') {
+        stage('Run Streamlit App') {
             steps {
                 script {
-                    bat '''
-                        call venv\\Scripts\\activate.bat
-                        venv\\Scripts\\python.exe -m pytest --junitxml=test-results.xml || exit /b 0
-                    '''
+                    // Kill any existing Streamlit processes on the specified port
+                    sh """
+                        # Find and kill any process using the Streamlit port
+                        lsof -ti :${STREAMLIT_PORT} | xargs -r kill -9 || true
+                    """
+                    
+                    // Run Streamlit in the background and save the PID
+                    sh """
+                        . ${VENV_PATH}/bin/activate
+                        nohup streamlit run your_app.py --server.port=${STREAMLIT_PORT} > streamlit.log 2>&1 &
+                        echo \$! > streamlit.pid
+                    """
                 }
             }
         }
-               
-        stage('Deploy') {
+        
+        stage('Health Check') {
             steps {
                 script {
-                    // Modified launcher script to run as a detached process
-                    writeFile file: 'launch_streamlit.bat', text: '''
-                        @echo off
-                        setlocal EnableDelayedExpansion
-                        
-                        echo Checking for existing Streamlit instances...
-                        taskkill /F /IM "streamlit.exe" 2>nul || echo No existing instances found
-                        timeout /t 5 /nobreak > nul
-                        
-                        echo Starting Streamlit...
-                        call venv\\Scripts\\activate.bat || (
-                            echo Failed to activate virtual environment
-                            exit /b 1
-                        )
-                        
-                        REM Create a VBS script to run Streamlit in the background
-                        echo Set WshShell = CreateObject("WScript.Shell") > run_streamlit.vbs
-                        echo WshShell.CurrentDirectory = "%CD%" >> run_streamlit.vbs
-                        echo cmd = "cmd /c venv\\Scripts\\streamlit.exe run app.py --server.port 8501 > streamlit.log 2>&1" >> run_streamlit.vbs
-                        echo WshShell.Run cmd, 0, false >> run_streamlit.vbs
-                        
-                        REM Launch the VBS script
-                        cscript //Nologo run_streamlit.vbs
-                        
-                        REM Store the timestamp as PID (since we can't get the actual PID of the detached process)
-                        echo %date% %time% > streamlit.pid
-                        
-                        REM Wait for Streamlit to start (up to 30 seconds)
-                        set /a attempts=0
-                        :WAIT_LOOP
-                        timeout /t 2 /nobreak > nul
-                        powershell -Command "Test-NetConnection -ComputerName localhost -Port 8501 -InformationLevel Quiet"
-                        if !ERRORLEVEL! EQU 0 (
-                            echo Streamlit successfully started on port 8501
-                            exit /b 0
-                        )
-                        set /a attempts+=1
-                        if !attempts! lss 15 goto WAIT_LOOP
-                        
-                        echo Failed to start Streamlit after 30 seconds
-                        type streamlit.log
-                        exit /b 1
-                    '''
+                    // Wait a moment for the app to start
+                    sh 'sleep 10'
                     
-                    // Modified cleanup script to handle background process
-                    writeFile file: 'cleanup_streamlit.bat', text: '''
-                        @echo off
-                        echo Cleaning up Streamlit processes...
-                        taskkill /F /IM "streamlit.exe" /FI "WINDOWTITLE eq streamlit*" 2>nul || echo No Streamlit processes found
-                        taskkill /F /IM "streamlit.exe" 2>nul || echo No Streamlit processes found
-                        if exist streamlit.pid del /f streamlit.pid
-                        if exist run_streamlit.vbs del /f run_streamlit.vbs
-                        if exist streamlit.log move /y streamlit.log streamlit_old.log
-                        exit /b 0
-                    '''
-                    
-                    // Execute deployment
-                    bat '''
-                        call cleanup_streamlit.bat
-                        call launch_streamlit.bat
-                        
-                        REM Verify deployment
-                        powershell -Command "try { $response = Invoke-WebRequest -Uri http://localhost:8501 -TimeoutSec 30 -Method HEAD; exit 0 } catch { exit 1 }"
-                        if %ERRORLEVEL% NEQ 0 (
-                            echo Deployment verification failed
-                            type streamlit.log
-                            call cleanup_streamlit.bat
-                            exit /b 1
-                        )
-                    '''
+                    // Check if the app is running
+                    sh """
+                        if curl -s http://localhost:${STREAMLIT_PORT} > /dev/null; then
+                            echo "Streamlit app is running successfully"
+                        else
+                            echo "Failed to start Streamlit app"
+                            exit 1
+                        fi
+                    """
                 }
             }
         }
@@ -150,21 +72,20 @@ pipeline {
     post {
         success {
             script {
-                echo "Pipeline completed successfully. Streamlit is running on http://localhost:8501"
-                archiveArtifacts artifacts: 'streamlit.log,streamlit.pid,run_streamlit.vbs', allowEmptyArchive: true
+                // Print out the PID for reference
+                sh 'cat streamlit.pid'
+                echo "Streamlit app is running on http://localhost:${STREAMLIT_PORT}"
             }
         }
-        failure {
+        
+        cleanup {
             script {
-                bat 'call cleanup_streamlit.bat'
-                archiveArtifacts artifacts: 'streamlit*.log', allowEmptyArchive: true
-                echo "Pipeline failed. Check the archived logs for details."
-            }
-        }
-        always {
-            script {
-                junit allowEmptyResults: true, testResults: 'test-results.xml'
-                bat 'if exist streamlit.log copy streamlit.log streamlit_%BUILD_NUMBER%.log'
+                // Optional: Ensure the Streamlit app continues running
+                // This step prevents the process from being killed after the pipeline
+                sh '''
+                    # Detach the process from the Jenkins job
+                    disown $(cat streamlit.pid)
+                '''
             }
         }
     }
