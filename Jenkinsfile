@@ -24,8 +24,6 @@ pipeline {
             steps {
                 script {
                     sh """
-                        # Kill any existing processes on the port
-                        lsof -ti :${STREAMLIT_PORT} | xargs -r kill -9 || true
                         
                         # Activate virtual environment and run Streamlit
                         . ${VENV_PATH}/bin/activate
