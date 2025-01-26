@@ -50,6 +50,13 @@ pipeline {
                 }
             }
         }
+        stage('Keep Build Running') {
+            steps {
+                script {
+                    sh 'while true; do sleep 1d; done'
+                }
+            }
+        }
     }
 
     post {
