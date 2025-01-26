@@ -27,7 +27,7 @@ pipeline {
                         
                         # Activate virtual environment and run Streamlit
                         . ${VENV_PATH}/bin/activate
-                        nohup streamlit run app.py --server.port=${STREAMLIT_PORT} > streamlit.log 2>&1 &
+                        nohup streamlit run app.py --server.port=${STREAMLIT_PORT} --server.address=10.120.12.188 > streamlit.log 2>&1 &
                         echo \$! > streamlit.pid
                         sleep 10
                     """
@@ -39,7 +39,7 @@ pipeline {
             steps {
                 script {
                     sh """
-                        curl -s http://localhost:${STREAMLIT_PORT} > /dev/null
+                        curl -s http://10.120.12.188:${STREAMLIT_PORT} > /dev/null
                         if [ \$? -eq 0 ]; then
                             echo "Streamlit app is running successfully"
                         else
@@ -56,7 +56,7 @@ pipeline {
         success {
             script {
                 sh """
-                    echo "Streamlit app is running on http://localhost:${STREAMLIT_PORT}"
+                    echo "Streamlit app is running on http://10.120.12.188:${STREAMLIT_PORT}"
                     cat streamlit.pid
                 """
             }
