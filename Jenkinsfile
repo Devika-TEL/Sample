@@ -39,7 +39,7 @@ pipeline {
             steps {
                 script {
                     sh """
-                        curl -s http://10.120.12.188:${STREAMLIT_PORT} > /dev/null
+                        curl -s 10.120.12.188:${STREAMLIT_PORT} > /dev/null
                         if [ \$? -eq 0 ]; then
                             echo "Streamlit app is running successfully"
                         else
@@ -56,7 +56,7 @@ pipeline {
         success {
             script {
                 sh """
-                    echo "Streamlit app is running on http://10.120.12.188:${STREAMLIT_PORT}"
+                    echo "Streamlit app is running on 10.120.12.188:${STREAMLIT_PORT}"
                     cat streamlit.pid
                 """
             }
